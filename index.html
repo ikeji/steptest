@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BlockCAD</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        font-family: system-ui, sans-serif;
+        overflow: hidden;
+      }
+      #app {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+      }
+      #toolbar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 12px;
+        background: #263238;
+        color: #eceff1;
+      }
+      #toolbar h1 {
+        font-size: 16px;
+        margin: 0 12px 0 0;
+      }
+      #toolbar button {
+        padding: 4px 12px;
+        border: none;
+        border-radius: 4px;
+        background: #546e7a;
+        color: white;
+        cursor: pointer;
+      }
+      #toolbar button:hover {
+        background: #78909c;
+      }
+      #status {
+        margin-left: auto;
+        font-size: 13px;
+      }
+      #status.error {
+        color: #ff8a80;
+      }
+      #main {
+        display: flex;
+        flex: 1;
+        min-height: 0;
+      }
+      #blockly-area {
+        flex: 1;
+        min-width: 0;
+      }
+      #viewer-area {
+        flex: 1;
+        min-width: 0;
+        position: relative;
+        background: #1a1d21;
+      }
+      #viewer-area canvas {
+        display: block;
+      }
+    </style>
+    <script type="module" crossorigin src="./assets/index-DnyhSXP1.js"></script>
+  </head>
+  <body>
+    <div id="app">
+      <div id="toolbar">
+        <h1>BlockCAD</h1>
+        <button id="export-stl">STL書き出し</button>
+        <button id="export-step">STEP書き出し</button>
+        <button id="clear">全消去</button>
+        <span id="status">OCCTを読み込み中…</span>
+      </div>
+      <div id="main">
+        <div id="blockly-area"></div>
+        <div id="viewer-area"></div>
+      </div>
+    </div>
+  </body>
+</html>
