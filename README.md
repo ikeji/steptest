@@ -25,6 +25,21 @@ npm run typecheck  # tsc --noEmit
 node smoke.mjs     # ヘッドレスブラウザでの動作確認 (dev サーバーをポート5199で起動しておく)
 ```
 
+## GitHub Pages へのデプロイ
+
+ビルド成果物は `gh-pages` ブランチに入れる (`vite.config.ts` の `base: "./"` でサブパス配信に対応済み)。
+
+```sh
+npm run build
+git worktree add --orphan -b gh-pages /tmp/gh-pages   # 初回のみ。2回目以降は -b を外して既存ブランチをチェックアウト
+cp -r dist/. /tmp/gh-pages/ && touch /tmp/gh-pages/.nojekyll
+git -C /tmp/gh-pages add -A && git -C /tmp/gh-pages commit -m "Deploy"
+git worktree remove /tmp/gh-pages
+git push origin main gh-pages
+```
+
+GitHub リポジトリの Settings → Pages で「Deploy from a branch」→ `gh-pages` / `/ (root)` を選ぶ。
+
 ## ファイル構成
 
 - `src/blocks.ts` — CAD ブロック定義 + JS コードジェネレータ + ツールボックス
