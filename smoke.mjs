@@ -63,6 +63,45 @@ await page
   .catch(() => {});
 console.log("after deselect:", await page.textContent("#status"));
 
+// --- 移動ギズモ: 移動ブロック選択でXYZ矢印が出て、ドラッグで数値が変わる ---
+await page.evaluate(() => {
+  const ws = window.blockcadWorkspace;
+  const block = ws.getAllBlocks().find((b) => b.type === "cad_translate");
+  ws.centerOnBlock(block.id);
+});
+await page.locator(".blocklyText", { hasText: "移動" }).first().click();
+await page.waitForFunction(() => window.blockcadViewer?.gizmoVisible === true, {
+  timeout: 15000,
+});
+console.log("gizmo visible:", await page.evaluate(() => window.blockcadViewer.gizmoVisible));
+await page.waitForTimeout(500);
+await page.screenshot({ path: "screen-gizmo.png" });
+
+// ドラッグ相当のコールバックを直接呼び、ブロックの数値へ反映されるか確認
+await page.evaluate(() => {
+  window.blockcadViewer.onGizmoChange({ x: 5, y: 3, z: -1 });
+});
+const xyz = await page.evaluate(() => {
+  const ws = window.blockcadWorkspace;
+  const block = ws.getAllBlocks().find((b) => b.type === "cad_translate");
+  return ["X", "Y", "Z"].map((n) =>
+    block.getInputTargetBlock(n).getFieldValue("NUM"),
+  );
+});
+console.log("after gizmo drag xyz:", xyz.join(","));
+
+// 移動ブロック以外を選択するとギズモが消える
+await page.evaluate(() => {
+  const ws = window.blockcadWorkspace;
+  const block = ws.getAllBlocks().find((b) => b.type === "cad_cylinder");
+  ws.centerOnBlock(block.id);
+});
+await page.locator(".blocklyText", { hasText: "円柱" }).first().click();
+await page.waitForFunction(() => window.blockcadViewer?.gizmoVisible === false, {
+  timeout: 15000,
+});
+console.log("gizmo hidden on other block: true");
+
 // --- プロジェクト保存 (フォールバック: ダウンロード) ---
 const workDir = await mkdtemp(join(tmpdir(), "blockcad-"));
 const [download] = await Promise.all([

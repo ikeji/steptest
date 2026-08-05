@@ -95,9 +95,11 @@ const workspace = Blockly.inject("blockly-area", {
 declare global {
   interface Window {
     blockcadWorkspace?: Blockly.WorkspaceSvg;
+    blockcadViewer?: Viewer;
   }
 }
 window.blockcadWorkspace = workspace;
+window.blockcadViewer = viewer;
 
 const saved = localStorage.getItem(STORAGE_KEY);
 Blockly.serialization.workspaces.load(
@@ -165,7 +167,7 @@ function generateCode(): string {
 // 表示するコードを生成する。形状に関係ないブロックなら null。
 let previewBlockId: string | null = null;
 
-function generatePreviewCode(): string | null {
+function findPreviewTarget(): Blockly.Block | null {
   if (!previewBlockId) return null;
   let target: Blockly.Block | null = workspace.getBlockById(previewBlockId);
   while (target) {
@@ -176,6 +178,11 @@ function generatePreviewCode(): string | null {
     if (target.outputConnection?.getCheck()?.includes("Shape")) break;
     target = target.getParent();
   }
+  return target;
+}
+
+function generatePreviewCode(): string | null {
+  const target = findPreviewTarget();
   if (!target) return null;
   const g = javascriptGenerator;
   g.init(workspace);
@@ -185,10 +192,54 @@ function generatePreviewCode(): string | null {
   return g.finish(`shapes.push(${expr});\n`);
 }
 
+// ---- 移動ギズモ: 移動ブロック選択時にXYZ矢印で数値を編集 -------------------
+
+let gizmoBlockId: string | null = null;
+
+// 指定入力に繋がっているのが単純な数値ブロックならそれを返す (式なら null)
+function numberInputBlock(
+  block: Blockly.Block,
+  name: string,
+): Blockly.Block | null {
+  const target = block.getInputTargetBlock(name);
+  return target?.type === "math_number" ? target : null;
+}
+
+function updateGizmo() {
+  if (viewer.gizmoDragging) return; // ドラッグ中はギズモ位置が正
+  const target = findPreviewTarget();
+  if (target?.type === "cad_translate") {
+    const inputs = ["X", "Y", "Z"].map((n) => numberInputBlock(target, n));
+    if (inputs.every((b) => b !== null)) {
+      const [x, y, z] = inputs.map((b) => Number(b!.getFieldValue("NUM")) || 0);
+      gizmoBlockId = target.id;
+      viewer.showGizmo({ x, y, z });
+      return;
+    }
+  }
+  gizmoBlockId = null;
+  viewer.hideGizmo();
+}
+
+viewer.onGizmoChange = (pos) => {
+  if (!gizmoBlockId) return;
+  const block = workspace.getBlockById(gizmoBlockId);
+  if (!block) return;
+  const values: Record<string, number> = { X: pos.x, Y: pos.y, Z: pos.z };
+  for (const [name, value] of Object.entries(values)) {
+    // 0.1単位に丸めてブロックの数値へ書き戻す (変更イベント経由で再計算される)
+    numberInputBlock(block, name)?.setFieldValue(
+      String(Math.round(value * 10) / 10),
+      "NUM",
+    );
+  }
+};
+
 let latestRunIsPreview = false;
 
 function rebuild() {
   if (!workerReady) return;
+  updateGizmo();
   const previewCode = generatePreviewCode();
   latestRunIsPreview = previewCode !== null;
   latestRunId = ++requestId;
