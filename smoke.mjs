@@ -26,6 +26,33 @@ console.log(
   "blockly blocks:",
   await page.evaluate(() => document.querySelectorAll(".blocklyDraggable").length),
 );
+
+// --- 選択プレビュー: 円柱ブロックをクリック → そのブロックだけ表示される ---
+await page.evaluate(() => {
+  const ws = window.blockcadWorkspace;
+  const block = ws.getAllBlocks().find((b) => b.type === "cad_cylinder");
+  ws.centerOnBlock(block.id);
+});
+await page.locator(".blocklyText", { hasText: "円柱" }).first().click();
+await page
+  .waitForFunction(
+    () => document.getElementById("status")?.textContent?.includes("プレビュー中"),
+    { timeout: 15000 },
+  )
+  .catch(() => {});
+console.log("after select:", await page.textContent("#status"));
+await page.waitForTimeout(500); // メッシュ描画を待つ
+await page.screenshot({ path: "screen-preview.png" });
+
+// 空きスペースをクリックして選択解除 → 全体表示に戻る
+await page.locator(".blocklyWorkspace > .blocklyBlockCanvas").first().page().mouse.click(400, 600);
+await page
+  .waitForFunction(
+    () => document.getElementById("status")?.textContent?.includes("個の形状"),
+    { timeout: 15000 },
+  )
+  .catch(() => {});
+console.log("after deselect:", await page.textContent("#status"));
 await page.screenshot({ path: new URL("./screen.png", import.meta.url).pathname });
 console.log("console errors:", errors.length ? errors : "none");
 await browser.close();

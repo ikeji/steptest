@@ -87,6 +87,14 @@ const workspace = Blockly.inject("blockly-area", {
   trashcan: true,
 });
 
+// デバッグ・テスト用に公開
+declare global {
+  interface Window {
+    blockcadWorkspace?: Blockly.WorkspaceSvg;
+  }
+}
+window.blockcadWorkspace = workspace;
+
 const saved = localStorage.getItem(STORAGE_KEY);
 Blockly.serialization.workspaces.load(
   saved ? JSON.parse(saved) : defaultWorkspace,
@@ -115,9 +123,13 @@ worker.onmessage = (event) => {
   if (msg.type === "result") {
     if (msg.id !== latestRunId) return; // 古い結果は捨てる
     viewer.updateShapes(msg.meshes);
-    setStatus(
-      msg.meshes.length > 0 ? `${msg.meshes.length}個の形状` : "「表示する」ブロックを置いてください",
-    );
+    if (latestRunIsPreview) {
+      setStatus("選択ブロックをプレビュー中");
+    } else {
+      setStatus(
+        msg.meshes.length > 0 ? `${msg.meshes.length}個の形状` : "「表示する」ブロックを置いてください",
+      );
+    }
     return;
   }
   if (msg.type === "export") {
@@ -142,22 +154,64 @@ function generateCode(): string {
   return javascriptGenerator.workspaceToCode(workspace);
 }
 
+// 選択中のブロック(またはその親をたどって最初に見つかる形状ブロック)だけを
+// 表示するコードを生成する。形状に関係ないブロックなら null。
+let previewBlockId: string | null = null;
+
+function generatePreviewCode(): string | null {
+  if (!previewBlockId) return null;
+  let target: Blockly.Block | null = workspace.getBlockById(previewBlockId);
+  while (target) {
+    if (target.type === "cad_show") {
+      target = target.getInputTargetBlock("SHAPE");
+      break;
+    }
+    if (target.outputConnection?.getCheck()?.includes("Shape")) break;
+    target = target.getParent();
+  }
+  if (!target) return null;
+  const g = javascriptGenerator;
+  g.init(workspace);
+  const result = g.blockToCode(target);
+  const expr = Array.isArray(result) ? result[0] : String(result);
+  if (!expr) return null;
+  return g.finish(`shapes.push(${expr});\n`);
+}
+
+let latestRunIsPreview = false;
+
 function rebuild() {
   if (!workerReady) return;
+  const previewCode = generatePreviewCode();
+  latestRunIsPreview = previewCode !== null;
   latestRunId = ++requestId;
   setStatus("計算中…");
-  worker.postMessage({ id: latestRunId, type: "run", code: generateCode() });
+  worker.postMessage({
+    id: latestRunId,
+    type: "run",
+    code: previewCode ?? generateCode(),
+  });
 }
 
 let debounceTimer: number | undefined;
+function scheduleRebuild(delay: number) {
+  clearTimeout(debounceTimer);
+  debounceTimer = window.setTimeout(rebuild, delay);
+}
+
 workspace.addChangeListener((event) => {
+  if (event.type === Blockly.Events.SELECTED) {
+    const e = event as Blockly.Events.Selected;
+    previewBlockId = e.newElementId ?? null;
+    scheduleRebuild(100);
+    return;
+  }
   if (event.isUiEvent) return;
   localStorage.setItem(
     STORAGE_KEY,
     JSON.stringify(Blockly.serialization.workspaces.save(workspace)),
   );
-  clearTimeout(debounceTimer);
-  debounceTimer = window.setTimeout(rebuild, 300);
+  scheduleRebuild(300);
 });
 
 // ---- ツールバー -----------------------------------------------------------

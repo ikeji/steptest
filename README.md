@@ -15,6 +15,7 @@ Blockly ブロック
 - **カーネル**: [replicad](https://replicad.xyz/) — opencascade.js の高水準ラッパー。STEP/STL 書き出しに対応。
 - **表示**: three.js + replicad-threejs-helper。Z-up の CAD 座標系。
 - **実行**: ブロック変更から 300ms デバウンスで自動再計算。重い OCCT 処理はすべて Worker 内。
+- **選択プレビュー**: ブロックを選択するとその形状だけを 3D 表示する(数値などを選択した場合は親をたどって最初の形状ブロックを表示)。選択解除で全体表示に戻る。STL/STEP 書き出しは常に全体が対象。
 
 ## 開発
 
