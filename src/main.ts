@@ -291,9 +291,18 @@ document.getElementById("toggle-code")!.addEventListener("click", () => {
   if (!codePanel.hidden) rebuild();
 });
 
+document.getElementById("close-code")!.addEventListener("click", () => {
+  codePanel.hidden = true;
+});
+
 document.getElementById("copy-code")!.addEventListener("click", () => {
   navigator.clipboard.writeText(codeView.textContent ?? "");
   setStatus("コードをコピーしました");
+});
+
+// ポップアップのボタン操作でBlocklyの選択(=プレビュー)が外れないようにする
+document.getElementById("code-head")!.addEventListener("pointerdown", (event) => {
+  event.preventDefault();
 });
 
 let latestRunIsPreview = false;

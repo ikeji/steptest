@@ -71,12 +71,22 @@
         display: block;
       }
       #code-panel {
-        background: #1e2428;
+        position: fixed;
+        right: 16px;
+        bottom: 16px;
+        width: min(640px, calc(50vw - 32px));
+        max-height: 50vh;
+        background: #1e2428ee;
         color: #cfd8dc;
-        border-top: 1px solid #37474f;
-        max-height: 30vh;
+        border: 1px solid #37474f;
+        border-radius: 8px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
         display: flex;
         flex-direction: column;
+        z-index: 10;
+      }
+      #code-panel[hidden] {
+        display: none;
       }
       #code-head {
         display: flex;
@@ -126,7 +136,10 @@
       <div id="code-panel" hidden>
         <div id="code-head">
           <span>replicad コード</span>
-          <button id="copy-code">コピー</button>
+          <span>
+            <button id="copy-code">コピー</button>
+            <button id="close-code">閉じる</button>
+          </span>
         </div>
         <pre id="code-view"></pre>
       </div>
