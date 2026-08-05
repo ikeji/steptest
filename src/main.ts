@@ -80,7 +80,13 @@ function setStatus(text: string, isError = false) {
   statusEl.classList.toggle("error", isError);
 }
 
-const viewer = new Viewer(document.getElementById("viewer-area")!);
+const viewerArea = document.getElementById("viewer-area")!;
+const viewer = new Viewer(viewerArea);
+
+// 3Dビューの操作 (カメラ回転・ギズモ) でフォーカスが移ると Blockly の
+// ブロック選択が解除されてしまうので、フォーカス移動だけを抑止する。
+// OrbitControls / TransformControls はリスナーで動くため影響しない。
+viewerArea.addEventListener("pointerdown", (event) => event.preventDefault());
 
 // ---- Blockly --------------------------------------------------------------
 

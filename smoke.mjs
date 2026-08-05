@@ -90,6 +90,21 @@ const xyz = await page.evaluate(() => {
 });
 console.log("after gizmo drag xyz:", xyz.join(","));
 
+// --- 3Dビューを操作してもブロックの選択が解除されない ---
+await page.mouse.move(1050, 450);
+await page.mouse.down();
+await page.mouse.move(1150, 500, { steps: 5 }); // カメラ回転ドラッグ
+await page.mouse.up();
+await page.waitForTimeout(300);
+console.log(
+  "after viewer drag - selected:",
+  await page.evaluate(() => document.querySelector(".blocklySelected") != null),
+  "gizmo:",
+  await page.evaluate(() => window.blockcadViewer.gizmoVisible),
+  "status:",
+  await page.textContent("#status"),
+);
+
 // 移動ブロック以外を選択するとギズモが消える
 await page.evaluate(() => {
   const ws = window.blockcadWorkspace;
