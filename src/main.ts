@@ -214,6 +214,121 @@ workspace.addChangeListener((event) => {
   scheduleRebuild(300);
 });
 
+// ---- プロジェクトファイルの読み書き ---------------------------------------
+// Chrome系: File System Access API で上書き保存。非対応ブラウザ: DL/アップロード。
+
+declare global {
+  interface Window {
+    showOpenFilePicker?: (options?: object) => Promise<FileSystemFileHandle[]>;
+    showSaveFilePicker?: (options?: object) => Promise<FileSystemFileHandle>;
+  }
+}
+
+const FILE_TYPES = [
+  {
+    description: "BlockCADプロジェクト",
+    accept: { "application/json": [".json"] },
+  },
+];
+
+let fileHandle: FileSystemFileHandle | null = null;
+
+const filenameEl = document.getElementById("filename")!;
+function setFileName(name: string) {
+  filenameEl.textContent = name;
+}
+
+function workspaceJson(): string {
+  return JSON.stringify(
+    Blockly.serialization.workspaces.save(workspace),
+    null,
+    2,
+  );
+}
+
+function isAbort(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "AbortError";
+}
+
+async function saveProject(saveAs: boolean) {
+  if (!window.showSaveFilePicker) {
+    // フォールバック: ダウンロード
+    const blob = new Blob([workspaceJson()], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "project.json";
+    a.click();
+    URL.revokeObjectURL(url);
+    setStatus("ダウンロードしました");
+    return;
+  }
+  try {
+    if (!fileHandle || saveAs) {
+      fileHandle = await window.showSaveFilePicker({
+        types: FILE_TYPES,
+        suggestedName: fileHandle?.name ?? "project.json",
+      });
+    }
+    const writable = await fileHandle.createWritable();
+    await writable.write(workspaceJson());
+    await writable.close();
+    setFileName(fileHandle.name);
+    setStatus(`${fileHandle.name} に保存しました`);
+  } catch (error) {
+    if (!isAbort(error)) setStatus(`保存エラー: ${error}`, true);
+  }
+}
+
+function loadProjectText(text: string, handle: FileSystemFileHandle | null) {
+  try {
+    const json = JSON.parse(text);
+    Blockly.serialization.workspaces.load(json, workspace);
+    fileHandle = handle;
+    setFileName(handle?.name ?? "");
+    setStatus("読み込みました");
+  } catch (error) {
+    setStatus(`読み込みエラー: ${error}`, true);
+  }
+}
+
+async function openProject() {
+  if (!window.showOpenFilePicker) {
+    // フォールバック: ファイル選択ダイアログ
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json,application/json";
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (file) loadProjectText(await file.text(), null);
+    };
+    input.click();
+    return;
+  }
+  try {
+    const [handle] = await window.showOpenFilePicker({ types: FILE_TYPES });
+    const file = await handle.getFile();
+    loadProjectText(await file.text(), handle);
+  } catch (error) {
+    if (!isAbort(error)) setStatus(`読み込みエラー: ${error}`, true);
+  }
+}
+
+document.getElementById("open")!.addEventListener("click", openProject);
+document.getElementById("save")!.addEventListener("click", () => saveProject(false));
+document.getElementById("save-as")!.addEventListener("click", () => saveProject(true));
+
+document.addEventListener("keydown", (event) => {
+  if (!(event.ctrlKey || event.metaKey)) return;
+  if (event.key === "s") {
+    event.preventDefault();
+    saveProject(event.shiftKey);
+  } else if (event.key === "o") {
+    event.preventDefault();
+    openProject();
+  }
+});
+
 // ---- ツールバー -----------------------------------------------------------
 
 function requestExport(type: "export-stl" | "export-step", filename: string) {

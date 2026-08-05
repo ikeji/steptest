@@ -44,6 +44,11 @@
         margin-left: auto;
         font-size: 13px;
       }
+      #filename {
+        font-size: 13px;
+        color: #b0bec5;
+        margin-right: 8px;
+      }
       #status.error {
         color: #ff8a80;
       }
@@ -71,6 +76,10 @@
     <div id="app">
       <div id="toolbar">
         <h1>BlockCAD</h1>
+        <button id="open" title="Ctrl+O">開く</button>
+        <button id="save" title="Ctrl+S">保存</button>
+        <button id="save-as">名前を付けて保存</button>
+        <span id="filename"></span>
         <button id="export-stl">STL書き出し</button>
         <button id="export-step">STEP書き出し</button>
         <button id="clear">全消去</button>
