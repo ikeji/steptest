@@ -79,7 +79,7 @@ await page.screenshot({ path: "screen-gizmo.png" });
 
 // ドラッグ相当のコールバックを直接呼び、ブロックの数値へ反映されるか確認
 await page.evaluate(() => {
-  window.blockcadViewer.onGizmoChange({ x: 5, y: 3, z: -1 });
+  window.blockcadViewer.onGizmoMove({ x: 5, y: 3, z: -1 });
 });
 const xyz = await page.evaluate(() => {
   const ws = window.blockcadWorkspace;
@@ -173,6 +173,72 @@ console.log(
   "status:",
   await page.textContent("#status"),
 );
+
+// --- 回転ギズモ: 回転ブロック選択でリングが出て、ドラッグで角度が変わる ---
+const rotateProject = {
+  blocks: {
+    languageVersion: 0,
+    blocks: [
+      {
+        type: "cad_show",
+        x: 30,
+        y: 30,
+        inputs: {
+          SHAPE: {
+            block: {
+              type: "cad_rotate",
+              fields: { AXIS: "[1, 0, 0]" },
+              inputs: {
+                ANGLE: { shadow: { type: "math_number", fields: { NUM: 30 } } },
+                SHAPE: {
+                  block: {
+                    type: "cad_cylinder",
+                    inputs: {
+                      R: { shadow: { type: "math_number", fields: { NUM: 5 } } },
+                      H: { shadow: { type: "math_number", fields: { NUM: 20 } } },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    ],
+  },
+};
+const rotatePath = join(workDir, "rotate.json");
+await writeFile(rotatePath, JSON.stringify(rotateProject));
+const [rotateChooser] = await Promise.all([
+  page.waitForEvent("filechooser"),
+  page.click("#open"),
+]);
+await rotateChooser.setFiles(rotatePath);
+await page.waitForFunction(
+  () => document.querySelectorAll(".blocklyDraggable").length === 6,
+  { timeout: 15000 },
+);
+await page.evaluate(() => {
+  const ws = window.blockcadWorkspace;
+  const block = ws.getAllBlocks().find((b) => b.type === "cad_rotate");
+  ws.centerOnBlock(block.id);
+});
+await page.locator(".blocklyText", { hasText: "回転" }).first().click();
+await page.waitForFunction(() => window.blockcadViewer?.gizmoVisible === true, {
+  timeout: 15000,
+});
+console.log("rotate gizmo visible:", true);
+await page.waitForTimeout(500);
+await page.screenshot({ path: "screen-rotate-gizmo.png" });
+await page.evaluate(() => {
+  window.blockcadViewer.onGizmoRotate(45);
+});
+const angle = await page.evaluate(() => {
+  const ws = window.blockcadWorkspace;
+  const block = ws.getAllBlocks().find((b) => b.type === "cad_rotate");
+  return block.getInputTargetBlock("ANGLE").getFieldValue("NUM");
+});
+console.log("after rotate drag angle:", angle);
 await page.screenshot({ path: new URL("./screen.png", import.meta.url).pathname });
 console.log("console errors:", errors.length ? errors : "none");
 await browser.close();

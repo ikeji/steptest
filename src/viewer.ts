@@ -11,9 +11,13 @@ export class Viewer {
   private shapeGroup = new THREE.Group();
   private gizmo: TransformControls;
   private gizmoTarget = new THREE.Object3D();
+  private gizmoMode: "translate" | "rotate" = "translate";
+  private gizmoAxis: "x" | "y" | "z" = "z";
 
-  /** ギズモをドラッグして位置が変わったときに呼ばれる */
-  onGizmoChange?: (pos: { x: number; y: number; z: number }) => void;
+  /** 移動ギズモをドラッグして位置が変わったときに呼ばれる */
+  onGizmoMove?: (pos: { x: number; y: number; z: number }) => void;
+  /** 回転ギズモをドラッグして角度が変わったときに呼ばれる (度) */
+  onGizmoRotate?: (angleDeg: number) => void;
   private geometries: { faces: THREE.BufferGeometry; lines: THREE.BufferGeometry }[] = [];
 
   private faceMaterial = new THREE.MeshStandardMaterial({
@@ -59,8 +63,15 @@ export class Viewer {
       this.controls.enabled = !(event as { value?: boolean }).value;
     });
     this.gizmo.addEventListener("objectChange", () => {
-      const { x, y, z } = this.gizmoTarget.position;
-      this.onGizmoChange?.({ x, y, z });
+      if (this.gizmoMode === "translate") {
+        const { x, y, z } = this.gizmoTarget.position;
+        this.onGizmoMove?.({ x, y, z });
+      } else if (this.gizmo.axis?.toLowerCase() === this.gizmoAxis) {
+        // 表示中の軸リング以外 (自由回転リング等) のドラッグは無視する
+        this.onGizmoRotate?.(
+          THREE.MathUtils.radToDeg(this.gizmoTarget.rotation[this.gizmoAxis]),
+        );
+      }
     });
     this.scene.add(this.gizmo.getHelper());
 
@@ -87,9 +98,29 @@ export class Viewer {
     return this.gizmo.object != null;
   }
 
-  showGizmo(pos: { x: number; y: number; z: number }) {
+  showTranslateGizmo(pos: { x: number; y: number; z: number }) {
+    this.gizmoMode = "translate";
+    this.gizmo.setMode("translate");
+    this.gizmo.showX = this.gizmo.showY = this.gizmo.showZ = true;
     if (!this.gizmo.dragging) {
       this.gizmoTarget.position.set(pos.x, pos.y, pos.z);
+      this.gizmoTarget.rotation.set(0, 0, 0);
+    }
+    if (!this.gizmo.object) this.gizmo.attach(this.gizmoTarget);
+  }
+
+  // 回転ブロックは原点まわりの回転なので、リングは常に原点に置く
+  showRotateGizmo(axis: "x" | "y" | "z", angleDeg: number) {
+    this.gizmoMode = "rotate";
+    this.gizmoAxis = axis;
+    this.gizmo.setMode("rotate");
+    this.gizmo.showX = axis === "x";
+    this.gizmo.showY = axis === "y";
+    this.gizmo.showZ = axis === "z";
+    if (!this.gizmo.dragging) {
+      this.gizmoTarget.position.set(0, 0, 0);
+      this.gizmoTarget.rotation.set(0, 0, 0);
+      this.gizmoTarget.rotation[axis] = THREE.MathUtils.degToRad(angleDeg);
     }
     if (!this.gizmo.object) this.gizmo.attach(this.gizmoTarget);
   }

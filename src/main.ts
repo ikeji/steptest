@@ -211,6 +211,12 @@ function numberInputBlock(
   return target?.type === "math_number" ? target : null;
 }
 
+const AXIS_NAMES: Record<string, "x" | "y" | "z"> = {
+  "[1, 0, 0]": "x",
+  "[0, 1, 0]": "y",
+  "[0, 0, 1]": "z",
+};
+
 function updateGizmo() {
   if (viewer.gizmoDragging) return; // ドラッグ中はギズモ位置が正
   const target = findPreviewTarget();
@@ -219,7 +225,16 @@ function updateGizmo() {
     if (inputs.every((b) => b !== null)) {
       const [x, y, z] = inputs.map((b) => Number(b!.getFieldValue("NUM")) || 0);
       gizmoBlockId = target.id;
-      viewer.showGizmo({ x, y, z });
+      viewer.showTranslateGizmo({ x, y, z });
+      return;
+    }
+  }
+  if (target?.type === "cad_rotate") {
+    const angleBlock = numberInputBlock(target, "ANGLE");
+    const axis = AXIS_NAMES[target.getFieldValue("AXIS")];
+    if (angleBlock && axis) {
+      gizmoBlockId = target.id;
+      viewer.showRotateGizmo(axis, Number(angleBlock.getFieldValue("NUM")) || 0);
       return;
     }
   }
@@ -227,7 +242,7 @@ function updateGizmo() {
   viewer.hideGizmo();
 }
 
-viewer.onGizmoChange = (pos) => {
+viewer.onGizmoMove = (pos) => {
   if (!gizmoBlockId) return;
   const block = workspace.getBlockById(gizmoBlockId);
   if (!block) return;
@@ -239,6 +254,17 @@ viewer.onGizmoChange = (pos) => {
       "NUM",
     );
   }
+};
+
+viewer.onGizmoRotate = (angleDeg) => {
+  if (!gizmoBlockId) return;
+  const block = workspace.getBlockById(gizmoBlockId);
+  if (!block) return;
+  // 1度単位に丸めて角度ブロックへ書き戻す
+  numberInputBlock(block, "ANGLE")?.setFieldValue(
+    String(Math.round(angleDeg)),
+    "NUM",
+  );
 };
 
 let latestRunIsPreview = false;
