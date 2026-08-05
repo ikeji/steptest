@@ -36,6 +36,19 @@ console.log(
   await page.evaluate(() => document.querySelectorAll(".blocklyDraggable").length),
 );
 
+// --- replicadコード表示パネル ---
+await page.click("#toggle-code");
+await page.waitForFunction(
+  () => document.getElementById("code-view")?.textContent?.includes("makeBaseBox"),
+  { timeout: 15000 },
+);
+const codeText = await page.textContent("#code-view");
+console.log(
+  "code panel:",
+  codeText.includes("const main") && codeText.includes("shapes.push") ? "ok" : codeText,
+);
+await page.click("#toggle-code"); // 閉じて以降のテストに影響しないように
+
 // --- 選択プレビュー: 円柱ブロックをクリック → そのブロックだけ表示される ---
 await page.evaluate(() => {
   const ws = window.blockcadWorkspace;

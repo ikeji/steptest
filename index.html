@@ -70,6 +70,39 @@
       #viewer-area canvas {
         display: block;
       }
+      #code-panel {
+        background: #1e2428;
+        color: #cfd8dc;
+        border-top: 1px solid #37474f;
+        max-height: 30vh;
+        display: flex;
+        flex-direction: column;
+      }
+      #code-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 4px 12px;
+        font-size: 12px;
+        color: #90a4ae;
+      }
+      #code-head button {
+        padding: 2px 10px;
+        border: none;
+        border-radius: 4px;
+        background: #546e7a;
+        color: white;
+        cursor: pointer;
+        font-size: 12px;
+      }
+      #code-view {
+        margin: 0;
+        padding: 0 12px 10px;
+        overflow: auto;
+        font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+        font-size: 12px;
+        line-height: 1.5;
+      }
     </style>
   </head>
   <body>
@@ -80,6 +113,7 @@
         <button id="save" title="Ctrl+S">保存</button>
         <button id="save-as">名前を付けて保存</button>
         <span id="filename"></span>
+        <button id="toggle-code">コード</button>
         <button id="export-stl">STL書き出し</button>
         <button id="export-step">STEP書き出し</button>
         <button id="clear">全消去</button>
@@ -88,6 +122,13 @@
       <div id="main">
         <div id="blockly-area"></div>
         <div id="viewer-area"></div>
+      </div>
+      <div id="code-panel" hidden>
+        <div id="code-head">
+          <span>replicad コード</span>
+          <button id="copy-code">コピー</button>
+        </div>
+        <pre id="code-view"></pre>
       </div>
     </div>
     <script type="module" src="/src/main.ts"></script>

@@ -267,6 +267,35 @@ viewer.onGizmoRotate = (angleDeg) => {
   );
 };
 
+// ---- replicadコード表示パネル ---------------------------------------------
+
+const codePanel = document.getElementById("code-panel")!;
+const codeView = document.getElementById("code-view")!;
+
+// replicadのワークベンチにそのまま貼れる形式で表示する
+function asReplicadScript(code: string): string {
+  const body = code
+    .trimEnd()
+    .split("\n")
+    .map((line) => (line ? `  ${line}` : line))
+    .join("\n");
+  return `const main = (replicad) => {\n  const shapes = [];\n${body}\n  return shapes;\n};`;
+}
+
+function updateCodePanel(code: string) {
+  if (!codePanel.hidden) codeView.textContent = asReplicadScript(code);
+}
+
+document.getElementById("toggle-code")!.addEventListener("click", () => {
+  codePanel.hidden = !codePanel.hidden;
+  if (!codePanel.hidden) rebuild();
+});
+
+document.getElementById("copy-code")!.addEventListener("click", () => {
+  navigator.clipboard.writeText(codeView.textContent ?? "");
+  setStatus("コードをコピーしました");
+});
+
 let latestRunIsPreview = false;
 
 function rebuild() {
@@ -276,11 +305,9 @@ function rebuild() {
   latestRunIsPreview = previewCode !== null;
   latestRunId = ++requestId;
   setStatus("計算中…");
-  worker.postMessage({
-    id: latestRunId,
-    type: "run",
-    code: previewCode ?? generateCode(),
-  });
+  const code = previewCode ?? generateCode();
+  updateCodePanel(code);
+  worker.postMessage({ id: latestRunId, type: "run", code });
 }
 
 let debounceTimer: number | undefined;
