@@ -70,6 +70,10 @@ const defaultWorkspace = {
 
 // ---- UI要素 ---------------------------------------------------------------
 
+function formatElapsed(ms: number): string {
+  return ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(2)}秒`;
+}
+
 const statusEl = document.getElementById("status")!;
 function setStatus(text: string, isError = false) {
   statusEl.textContent = text;
@@ -123,11 +127,14 @@ worker.onmessage = (event) => {
   if (msg.type === "result") {
     if (msg.id !== latestRunId) return; // 古い結果は捨てる
     viewer.updateShapes(msg.meshes);
+    const time = formatElapsed(msg.elapsedMs);
     if (latestRunIsPreview) {
-      setStatus("選択ブロックをプレビュー中");
+      setStatus(`選択ブロックをプレビュー中 (${time})`);
     } else {
       setStatus(
-        msg.meshes.length > 0 ? `${msg.meshes.length}個の形状` : "「表示する」ブロックを置いてください",
+        msg.meshes.length > 0
+          ? `${msg.meshes.length}個の形状 (${time})`
+          : "「表示する」ブロックを置いてください",
       );
     }
     return;

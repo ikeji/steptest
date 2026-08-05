@@ -36,13 +36,15 @@ self.onmessage = async (event: MessageEvent) => {
   try {
     await init();
     if (type === "run") {
+      const started = performance.now();
       const shapes = buildShapes(code);
       const meshes = shapes.map((shape, i) => ({
         name: `shape-${i}`,
         faces: shape.mesh({ tolerance: 0.05, angularTolerance: 30 }),
         edges: shape.meshEdges(),
       }));
-      postMessage({ id, type: "result", meshes });
+      const elapsedMs = performance.now() - started;
+      postMessage({ id, type: "result", meshes, elapsedMs });
     } else if (type === "export-stl" || type === "export-step") {
       const shapes = buildShapes(code);
       if (shapes.length === 0) throw new Error("表示する形状がありません");
