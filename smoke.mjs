@@ -36,6 +36,20 @@ console.log(
   await page.evaluate(() => document.querySelectorAll(".blocklyDraggable").length),
 );
 
+// --- ツールボックスはデフォルト非表示、ボタンで出し入れ ---
+const toolboxDisplay = () =>
+  page.evaluate(() => {
+    const el =
+      document.querySelector(".blocklyToolboxDiv") ??
+      document.querySelector(".blocklyToolbox");
+    return el ? getComputedStyle(el).display !== "none" : false;
+  });
+console.log("toolbox initially visible:", await toolboxDisplay());
+await page.click("#toggle-toolbox");
+console.log("toolbox after toggle:", await toolboxDisplay());
+await page.click("#toggle-toolbox");
+console.log("toolbox after re-toggle:", await toolboxDisplay());
+
 // --- replicadコード表示パネル (ポップアップ) ---
 const initiallyHidden = await page.evaluate(
   () => getComputedStyle(document.getElementById("code-panel")).display === "none",

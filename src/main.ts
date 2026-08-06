@@ -107,6 +107,18 @@ declare global {
 window.blockcadWorkspace = workspace;
 window.blockcadViewer = viewer;
 
+// ツールボックス (左のブロックリスト) はふだん隠しておき、ボタンで出し入れする
+let toolboxVisible = false;
+function applyToolboxVisibility() {
+  workspace.getToolbox()?.setVisible(toolboxVisible);
+  Blockly.svgResize(workspace);
+}
+document.getElementById("toggle-toolbox")!.addEventListener("click", () => {
+  toolboxVisible = !toolboxVisible;
+  applyToolboxVisibility();
+});
+applyToolboxVisibility();
+
 const saved = localStorage.getItem(STORAGE_KEY);
 Blockly.serialization.workspaces.load(
   saved ? JSON.parse(saved) : defaultWorkspace,
