@@ -102,10 +102,12 @@ declare global {
   interface Window {
     blockcadWorkspace?: Blockly.WorkspaceSvg;
     blockcadViewer?: Viewer;
+    blockcadBlockly?: typeof Blockly;
   }
 }
 window.blockcadWorkspace = workspace;
 window.blockcadViewer = viewer;
+window.blockcadBlockly = Blockly;
 
 // ツールボックス (左のブロックリスト) はふだん隠しておき、ボタンで出し入れする
 let toolboxVisible = false;
@@ -279,6 +281,143 @@ viewer.onGizmoRotate = (angleDeg) => {
   );
 };
 
+// ---- コンテキストアクションメニュー ---------------------------------------
+// 未選択: 形状の追加。選択中: 選択している形状を変形ブロックで包む。
+
+const numShadow = (n: number) => ({
+  shadow: { type: "math_number", fields: { NUM: n } },
+});
+
+const ADD_ACTIONS = [
+  {
+    label: "直方体",
+    state: {
+      type: "cad_box",
+      inputs: { W: numShadow(30), D: numShadow(20), H: numShadow(10) },
+    },
+  },
+  {
+    label: "円柱",
+    state: {
+      type: "cad_cylinder",
+      inputs: { R: numShadow(5), H: numShadow(20) },
+    },
+  },
+  {
+    label: "球",
+    state: { type: "cad_sphere", inputs: { R: numShadow(10) } },
+  },
+];
+
+const WRAP_ACTIONS = [
+  {
+    label: "移動",
+    state: {
+      type: "cad_translate",
+      inputs: { X: numShadow(0), Y: numShadow(0), Z: numShadow(0) },
+    },
+  },
+  {
+    label: "回転",
+    state: { type: "cad_rotate", inputs: { ANGLE: numShadow(90) } },
+  },
+  {
+    label: "拡大縮小",
+    state: { type: "cad_scale", inputs: { FACTOR: numShadow(2) } },
+  },
+  {
+    label: "フィレット",
+    state: { type: "cad_fillet", inputs: { R: numShadow(2) } },
+  },
+  {
+    label: "面取り",
+    state: { type: "cad_chamfer", inputs: { R: numShadow(1) } },
+  },
+];
+
+type BlockState = { type: string; [key: string]: unknown };
+
+// select() だけだとフォーカスが移らず、後で空きスペースをクリックしても
+// 選択解除されない。フォーカスも一緒に移す。
+function selectBlock(block: Blockly.BlockSvg) {
+  block.select();
+  Blockly.getFocusManager().focusNode(block);
+}
+
+function appendBlock(state: BlockState): Blockly.BlockSvg {
+  return Blockly.serialization.blocks.append(
+    structuredClone(state),
+    workspace,
+  ) as Blockly.BlockSvg;
+}
+
+// 既存ブロックの下の空きに「表示する+形状」を追加し、その形状を選択する
+function addShape(state: BlockState) {
+  // 間隔は snapRadius (28px) より大きく取る。近いと「未接続ブロックが偶然
+  // 並んでいる」と見なされ、レンダリング後のバンプ処理で押しのけられる。
+  let y = 30;
+  for (const top of workspace.getTopBlocks(false)) {
+    y = Math.max(y, top.getBoundingRectangle().bottom + 40);
+  }
+  // append の x/y 指定は文ブロックだとずれることがあるので moveBy で確実に配置する
+  const show = appendBlock({
+    type: "cad_show",
+    inputs: { SHAPE: { block: state } },
+  });
+  const rect = show.getBoundingRectangle();
+  show.moveBy(30 - rect.left, y - rect.top);
+  const shape = show.getInputTargetBlock("SHAPE") as Blockly.BlockSvg | null;
+  if (shape) selectBlock(shape);
+}
+
+// 選択中の形状ブロックを変形ブロックで包み、変形ブロックを選択する
+function wrapSelected(state: BlockState) {
+  const target = findPreviewTarget() as Blockly.BlockSvg | null;
+  if (!target?.outputConnection) return;
+  Blockly.Events.setGroup(true);
+  try {
+    const parentConnection = target.outputConnection.targetConnection;
+    const pos = target.getRelativeToSurfaceXY();
+    const wrapper = appendBlock(state);
+    // 先に対象を包んでから親につなぐ。逆順だと対象が一時的に宙に浮き、
+    // Blocklyの遅延バンプ処理が周囲のブロックを押しのけてしまう。
+    wrapper.getInput("SHAPE")!.connection!.connect(target.outputConnection);
+    if (parentConnection) {
+      parentConnection.connect(wrapper.outputConnection!);
+    } else {
+      const cur = wrapper.getRelativeToSurfaceXY();
+      wrapper.moveBy(pos.x - cur.x, pos.y - cur.y);
+    }
+    selectBlock(wrapper);
+  } finally {
+    Blockly.Events.setGroup(false);
+  }
+}
+
+const actionMenuTitle = document.getElementById("action-menu-title")!;
+const actionAdd = document.getElementById("action-add")!;
+const actionWrap = document.getElementById("action-wrap")!;
+
+for (const action of ADD_ACTIONS) {
+  const button = document.createElement("button");
+  button.textContent = action.label;
+  button.addEventListener("click", () => addShape(action.state));
+  actionAdd.appendChild(button);
+}
+for (const action of WRAP_ACTIONS) {
+  const button = document.createElement("button");
+  button.textContent = action.label;
+  button.addEventListener("click", () => wrapSelected(action.state));
+  actionWrap.appendChild(button);
+}
+
+function updateActionMenu() {
+  const hasTarget = findPreviewTarget() != null;
+  actionMenuTitle.textContent = hasTarget ? "選択中の形状を変形" : "形状を追加";
+  actionAdd.hidden = hasTarget;
+  actionWrap.hidden = !hasTarget;
+}
+
 // ---- replicadコード表示パネル ---------------------------------------------
 
 const codePanel = document.getElementById("code-panel")!;
@@ -320,6 +459,7 @@ document.getElementById("code-head")!.addEventListener("pointerdown", (event) =>
 let latestRunIsPreview = false;
 
 function rebuild() {
+  updateActionMenu();
   if (!workerReady) return;
   updateGizmo();
   const previewCode = generatePreviewCode();

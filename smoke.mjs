@@ -276,6 +276,50 @@ const angle = await page.evaluate(() => {
   return block.getInputTargetBlock("ANGLE").getFieldValue("NUM");
 });
 console.log("after rotate drag angle:", angle);
+
+// --- コンテキストアクションメニュー ---
+await page.mouse.click(400, 700); // 選択解除
+await page.waitForFunction(
+  () => document.getElementById("status")?.textContent?.includes("個の形状"),
+  { timeout: 15000 },
+);
+console.log(
+  "menu shows add (no selection):",
+  await page.evaluate(
+    () =>
+      !document.getElementById("action-add").hidden &&
+      document.getElementById("action-wrap").hidden,
+  ),
+);
+await page.locator("#action-add button", { hasText: "円柱" }).click();
+await page.waitForFunction(
+  () => document.getElementById("status")?.textContent?.includes("プレビュー中"),
+  { timeout: 15000 },
+);
+console.log(
+  "menu shows wrap (selected):",
+  await page.evaluate(
+    () =>
+      document.getElementById("action-add").hidden &&
+      !document.getElementById("action-wrap").hidden,
+  ),
+);
+await page.locator("#action-wrap button", { hasText: "移動" }).click();
+await page.waitForFunction(() => window.blockcadViewer?.gizmoVisible === true, {
+  timeout: 15000,
+});
+console.log(
+  "wrapped translate around cylinder:",
+  await page.evaluate(() => {
+    const ws = window.blockcadWorkspace;
+    const translate = ws
+      .getAllBlocks()
+      .find((b) => b.type === "cad_translate");
+    return translate?.getInputTargetBlock("SHAPE")?.type === "cad_cylinder";
+  }),
+);
+await page.waitForTimeout(500);
+await page.screenshot({ path: "screen-actionmenu.png" });
 await page.screenshot({ path: new URL("./screen.png", import.meta.url).pathname });
 console.log("console errors:", errors.length ? errors : "none");
 await browser.close();

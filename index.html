@@ -70,6 +70,43 @@
       #viewer-area canvas {
         display: block;
       }
+      #action-menu {
+        position: absolute;
+        top: 12px;
+        right: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        width: 120px;
+        z-index: 5;
+      }
+      #action-menu-title {
+        color: #90a4ae;
+        font-size: 12px;
+        text-align: center;
+      }
+      #action-add,
+      #action-wrap {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      #action-add[hidden],
+      #action-wrap[hidden] {
+        display: none;
+      }
+      #action-menu button {
+        padding: 6px 8px;
+        border: none;
+        border-radius: 6px;
+        background: #37474fdd;
+        color: #eceff1;
+        cursor: pointer;
+        font-size: 13px;
+      }
+      #action-menu button:hover {
+        background: #546e7a;
+      }
       #code-panel {
         position: fixed;
         right: 16px;
@@ -132,7 +169,13 @@
       </div>
       <div id="main">
         <div id="blockly-area"></div>
-        <div id="viewer-area"></div>
+        <div id="viewer-area">
+          <div id="action-menu">
+            <div id="action-menu-title">形状を追加</div>
+            <div id="action-add"></div>
+            <div id="action-wrap" hidden></div>
+          </div>
+        </div>
       </div>
       <div id="code-panel" hidden>
         <div id="code-head">
