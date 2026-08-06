@@ -343,6 +343,48 @@ console.log(
     return id ? window.blockcadWorkspace.getBlockById(id)?.type : null;
   }),
 );
+
+// --- Shift+クリックで複数選択して「けずる」 ---
+await page.mouse.click(1380, 860); // まず選択解除
+await page.waitForFunction(
+  () => document.getElementById("status")?.textContent?.includes("個の形状"),
+  { timeout: 15000 },
+);
+await page.evaluate(() => {
+  const ws = window.blockcadWorkspace;
+  const shapeIds = ws
+    .getTopBlocks(true)
+    .filter((b) => b.type === "cad_show")
+    .map((b) => b.getInputTargetBlock("SHAPE")?.id)
+    .filter(Boolean);
+  // Shift+クリック相当の操作を2回
+  window.blockcadViewer.onPickShape(shapeIds[0], { shiftKey: true });
+  window.blockcadViewer.onPickShape(shapeIds[1], { shiftKey: true });
+});
+console.log(
+  "combine menu shown:",
+  await page.evaluate(() => !document.getElementById("action-combine").hidden),
+);
+await page.locator("#action-combine button", { hasText: "けずる" }).click();
+await page.waitForFunction(
+  () => document.getElementById("status")?.textContent?.includes("プレビュー中"),
+  { timeout: 15000 },
+);
+console.log(
+  "after combine:",
+  await page.evaluate(() => {
+    const ws = window.blockcadWorkspace;
+    const diff = ws.getAllBlocks().find((b) => b.type === "cad_difference");
+    const shows = ws.getAllBlocks().filter((b) => b.type === "cad_show");
+    const selectedId = document.querySelector(".blocklySelected")?.getAttribute("data-id");
+    return JSON.stringify({
+      diffA: diff?.getInputTargetBlock("A")?.type,
+      diffB: diff?.getInputTargetBlock("B")?.type,
+      showCount: shows.length,
+      selected: selectedId ? ws.getBlockById(selectedId)?.type : null,
+    });
+  }),
+);
 await page.screenshot({ path: new URL("./screen.png", import.meta.url).pathname });
 console.log("console errors:", errors.length ? errors : "none");
 await browser.close();

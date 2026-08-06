@@ -88,8 +88,35 @@ const viewer = new Viewer(viewerArea);
 // OrbitControls / TransformControls はリスナーで動くため影響しない。
 viewerArea.addEventListener("pointerdown", (event) => event.preventDefault());
 
-// 3Dビュー内のクリック: 形状ならそのブロックを選択、空きなら選択解除
-viewer.onPickShape = (blockId) => {
+// 3Dビュー内のクリック:
+//   通常クリック: 形状ならそのブロックを選択、空きなら選択解除
+//   Shift+クリック: 複数選択 (最大2つ)。全体表示のままハイライトされ、
+//                   2つ選ぶと合体/けずる/共通部分が使える
+viewer.onPickShape = (blockId, mods) => {
+  if (mods.shiftKey) {
+    if (!blockId) return;
+    let ids = [...multiSelection];
+    if (previewBlockId) {
+      // 単一プレビュー中なら、いまの選択を1つ目として多選択モードへ移行
+      const target = findPreviewTarget();
+      ids = target && target.id !== blockId ? [target.id] : [];
+      const selected = workspace.getBlockById(
+        previewBlockId,
+      ) as Blockly.BlockSvg | null;
+      selected?.unselect();
+      previewBlockId = null;
+      scheduleRebuild(100);
+    }
+    if (ids.includes(blockId)) {
+      ids = ids.filter((id) => id !== blockId);
+    } else {
+      ids.push(blockId);
+      if (ids.length > 2) ids = ids.slice(-2);
+    }
+    setMultiSelection(ids);
+    return;
+  }
+  setMultiSelection([]);
   if (blockId) {
     const block = workspace.getBlockById(blockId) as Blockly.BlockSvg | null;
     if (block) {
@@ -437,9 +464,72 @@ function wrapSelected(state: BlockState) {
   }
 }
 
+// ---- 複数選択 (Shift+クリック) と組み合わせ --------------------------------
+
+let multiSelection: string[] = [];
+
+function setMultiSelection(ids: string[]) {
+  multiSelection = ids;
+  viewer.setHighlights(ids);
+  updateActionMenu();
+}
+
+const COMBINE_ACTIONS = [
+  { label: "合体", type: "cad_union" },
+  { label: "けずる (青−橙)", type: "cad_difference" },
+  { label: "共通部分", type: "cad_intersect" },
+];
+
+// 1つ目 (青) をA、2つ目 (橙) をBとしてブール演算ブロックにまとめる
+function combineSelected(blockType: string) {
+  const [idA, idB] = multiSelection;
+  const a = workspace.getBlockById(idA ?? "") as Blockly.BlockSvg | null;
+  const b = workspace.getBlockById(idB ?? "") as Blockly.BlockSvg | null;
+  if (!a?.outputConnection || !b?.outputConnection || a === b) {
+    setStatus("組み合わせる形状を2つ選んでください", true);
+    return;
+  }
+  if (a.getDescendants(false).includes(b) || b.getDescendants(false).includes(a)) {
+    setStatus("入れ子になっている形状同士は組み合わせられません", true);
+    return;
+  }
+  Blockly.Events.setGroup(true);
+  try {
+    const parentConnection = a.outputConnection.targetConnection;
+    const pos = a.getRelativeToSurfaceXY();
+    const bShow = b.getParent();
+    const combiner = appendBlock({ type: blockType });
+    combiner.getInput("A")!.connection!.connect(a.outputConnection);
+    combiner.getInput("B")!.connection!.connect(b.outputConnection);
+    if (parentConnection) {
+      parentConnection.connect(combiner.outputConnection!);
+    } else {
+      const cur = combiner.getRelativeToSurfaceXY();
+      combiner.moveBy(pos.x - cur.x, pos.y - cur.y);
+    }
+    // Bが入っていた「表示する」が空になったら片付ける
+    if (bShow?.type === "cad_show" && !bShow.getInputTargetBlock("SHAPE")) {
+      bShow.dispose();
+    }
+    setMultiSelection([]);
+    selectBlock(combiner);
+  } finally {
+    Blockly.Events.setGroup(false);
+  }
+}
+
 const actionMenuTitle = document.getElementById("action-menu-title")!;
 const actionAdd = document.getElementById("action-add")!;
 const actionWrap = document.getElementById("action-wrap")!;
+const actionCombine = document.getElementById("action-combine")!;
+const actionHint = document.getElementById("action-hint")!;
+
+for (const action of COMBINE_ACTIONS) {
+  const button = document.createElement("button");
+  button.textContent = action.label;
+  button.addEventListener("click", () => combineSelected(action.type));
+  actionCombine.appendChild(button);
+}
 
 for (const action of ADD_ACTIONS) {
   const button = document.createElement("button");
@@ -455,10 +545,30 @@ for (const action of WRAP_ACTIONS) {
 }
 
 function updateActionMenu() {
+  // 消えたブロックのIDが残っていたら掃除する
+  const liveMulti = multiSelection.filter((id) => workspace.getBlockById(id));
+  if (liveMulti.length !== multiSelection.length) {
+    multiSelection = liveMulti;
+    viewer.setHighlights(liveMulti);
+  }
   const hasTarget = findPreviewTarget() != null;
-  actionMenuTitle.textContent = hasTarget ? "選択中の形状を変形" : "形状を追加";
-  actionAdd.hidden = hasTarget;
-  actionWrap.hidden = !hasTarget;
+  const multi = multiSelection.length;
+  actionAdd.hidden = multi > 0 || hasTarget;
+  actionWrap.hidden = multi > 0 || !hasTarget;
+  actionCombine.hidden = multi < 2;
+  if (multi >= 2) {
+    actionMenuTitle.textContent = "2つの形状を組み合わせ";
+    actionHint.textContent = "「けずる」は青から橙を取り除きます";
+  } else if (multi === 1) {
+    actionMenuTitle.textContent = "組み合わせ";
+    actionHint.textContent = "もう1つの形状を Shift+クリック";
+  } else if (hasTarget) {
+    actionMenuTitle.textContent = "選択中の形状を変形";
+    actionHint.textContent = "Shift+クリックで2つ選ぶと合体などができます";
+  } else {
+    actionMenuTitle.textContent = "形状を追加";
+    actionHint.textContent = "";
+  }
 }
 
 // ---- replicadコード表示パネル ---------------------------------------------
@@ -528,6 +638,7 @@ workspace.addChangeListener((event) => {
   if (event.type === Blockly.Events.SELECTED) {
     const e = event as Blockly.Events.Selected;
     previewBlockId = e.newElementId ?? null;
+    if (previewBlockId) setMultiSelection([]);
     scheduleRebuild(100);
     return;
   }

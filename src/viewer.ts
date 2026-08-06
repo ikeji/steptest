@@ -19,8 +19,24 @@ export class Viewer {
   /** 回転ギズモをドラッグして角度が変わったときに呼ばれる (度) */
   onGizmoRotate?: (angleDeg: number) => void;
   /** 形状をクリックしたとき (blockId)、空きをクリックしたとき (null) に呼ばれる */
-  onPickShape?: (blockId: string | null) => void;
+  onPickShape?: (blockId: string | null, mods: { shiftKey: boolean }) => void;
   private raycaster = new THREE.Raycaster();
+  private highlightIds: string[] = [];
+  // 複数選択のハイライト: 1つ目 (元) は明るい青、2つ目 (相手) はオレンジ
+  private highlightMaterials = [
+    new THREE.MeshStandardMaterial({
+      color: 0x64b5f6,
+      metalness: 0.1,
+      roughness: 0.6,
+      side: THREE.DoubleSide,
+    }),
+    new THREE.MeshStandardMaterial({
+      color: 0xffb74d,
+      metalness: 0.1,
+      roughness: 0.6,
+      side: THREE.DoubleSide,
+    }),
+  ];
   private geometries: { faces: THREE.BufferGeometry; lines: THREE.BufferGeometry }[] = [];
 
   private faceMaterial = new THREE.MeshStandardMaterial({
@@ -102,6 +118,7 @@ export class Viewer {
       const hit = this.raycaster.intersectObjects(meshes, false)[0];
       this.onPickShape?.(
         hit ? ((hit.object.userData.blockId as string | null) ?? null) : null,
+        { shiftKey: event.shiftKey },
       );
     });
 
@@ -172,5 +189,22 @@ export class Viewer {
       this.shapeGroup.add(mesh);
       this.shapeGroup.add(new THREE.LineSegments(lines, this.lineMaterial));
     });
+    this.applyHighlights();
+  }
+
+  setHighlights(ids: string[]) {
+    this.highlightIds = ids;
+    this.applyHighlights();
+  }
+
+  private applyHighlights() {
+    for (const child of this.shapeGroup.children) {
+      if (!(child instanceof THREE.Mesh)) continue;
+      const index = this.highlightIds.indexOf(child.userData.blockId);
+      child.material =
+        index >= 0
+          ? this.highlightMaterials[Math.min(index, 1)]
+          : this.faceMaterial;
+    }
   }
 }
