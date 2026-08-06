@@ -11,8 +11,23 @@ export class Viewer {
   private shapeGroup = new THREE.Group();
   private gizmo: TransformControls;
   private gizmoTarget = new THREE.Object3D();
-  private gizmoMode: "translate" | "rotate" = "translate";
-  private gizmoAxis: "x" | "y" | "z" = "z";
+
+  // ---- 回転ダイヤル (全周リング+目盛り+針。ドラッグでノブのように回す) ----
+  private rotateDial = new THREE.Group();
+  private dialHandle = new THREE.Group();
+  private dialHitDisc!: THREE.Mesh;
+  private dialAxis: "x" | "y" | "z" = "z";
+  private dialDragging = false;
+  private dialLabel!: HTMLDivElement;
+  private dialRingMaterial = new THREE.MeshBasicMaterial({ color: 0x4466dd });
+  private dialNeedleMaterial = new THREE.LineBasicMaterial({ color: 0x4466dd });
+
+  // 各軸のダイヤル平面: u=0°方向, v=90°方向, n=回転軸 (右手系)
+  private static readonly DIAL_BASES = {
+    x: { u: [0, 1, 0], v: [0, 0, 1], n: [1, 0, 0], color: 0xe06666 },
+    y: { u: [0, 0, 1], v: [1, 0, 0], n: [0, 1, 0], color: 0x66bb6a },
+    z: { u: [1, 0, 0], v: [0, 1, 0], n: [0, 0, 1], color: 0x64b5f6 },
+  } as const;
 
   /** 移動ギズモをドラッグして位置が変わったときに呼ばれる */
   onGizmoMove?: (pos: { x: number; y: number; z: number }) => void;
@@ -82,24 +97,42 @@ export class Viewer {
       this.controls.enabled = !(event as { value?: boolean }).value;
     });
     this.gizmo.addEventListener("objectChange", () => {
-      if (this.gizmoMode === "translate") {
-        const { x, y, z } = this.gizmoTarget.position;
-        this.onGizmoMove?.({ x, y, z });
-      } else if (this.gizmo.axis?.toLowerCase() === this.gizmoAxis) {
-        // 表示中の軸リング以外 (自由回転リング等) のドラッグは無視する
-        this.onGizmoRotate?.(
-          THREE.MathUtils.radToDeg(this.gizmoTarget.rotation[this.gizmoAxis]),
-        );
-      }
+      const { x, y, z } = this.gizmoTarget.position;
+      this.onGizmoMove?.({ x, y, z });
     });
     this.scene.add(this.gizmo.getHelper());
+
+    this.buildRotateDial();
+    this.scene.add(this.rotateDial);
+    this.dialLabel = document.createElement("div");
+    this.dialLabel.style.cssText =
+      "position:absolute;top:12px;left:12px;padding:4px 10px;background:#263238cc;" +
+      "color:#eceff1;font-size:13px;border-radius:6px;pointer-events:none;display:none;";
+    container.appendChild(this.dialLabel);
 
     // クリック (ドラッグやギズモ操作でない) で形状を選択できるようにする
     const dom = this.renderer.domElement;
     let downAt: { x: number; y: number } | null = null;
     dom.addEventListener("pointerdown", (event) => {
+      // 回転ダイヤル上ならドラッグ開始
+      if (this.rotateDial.visible && this.isPointerOnDial(event)) {
+        this.dialDragging = true;
+        this.controls.enabled = false;
+        this.applyDialPointer(event);
+        downAt = null;
+        return;
+      }
       // ギズモのハンドル上 (ホバーで axis が立つ) なら選択処理はしない
       downAt = this.gizmo.axis ? null : { x: event.clientX, y: event.clientY };
+    });
+    dom.addEventListener("pointermove", (event) => {
+      if (this.dialDragging) this.applyDialPointer(event);
+    });
+    dom.addEventListener("pointerup", () => {
+      if (this.dialDragging) {
+        this.dialDragging = false;
+        this.controls.enabled = true;
+      }
     });
     dom.addEventListener("pointerup", (event) => {
       if (!downAt) return;
@@ -138,42 +171,143 @@ export class Viewer {
   }
 
   get gizmoDragging(): boolean {
-    return this.gizmo.dragging;
+    return this.gizmo.dragging || this.dialDragging;
   }
 
   get gizmoVisible(): boolean {
-    return this.gizmo.object != null;
+    return this.gizmo.object != null || this.rotateDial.visible;
   }
 
   showTranslateGizmo(pos: { x: number; y: number; z: number }) {
-    this.gizmoMode = "translate";
-    this.gizmo.setMode("translate");
-    this.gizmo.showX = this.gizmo.showY = this.gizmo.showZ = true;
+    this.rotateDial.visible = false;
+    this.dialLabel.style.display = "none";
     if (!this.gizmo.dragging) {
       this.gizmoTarget.position.set(pos.x, pos.y, pos.z);
-      this.gizmoTarget.rotation.set(0, 0, 0);
     }
     if (!this.gizmo.object) this.gizmo.attach(this.gizmoTarget);
   }
 
-  // 回転ブロックは原点まわりの回転なので、リングは常に原点に置く
-  showRotateGizmo(axis: "x" | "y" | "z", angleDeg: number) {
-    this.gizmoMode = "rotate";
-    this.gizmoAxis = axis;
-    this.gizmo.setMode("rotate");
-    this.gizmo.showX = axis === "x";
-    this.gizmo.showY = axis === "y";
-    this.gizmo.showZ = axis === "z";
-    if (!this.gizmo.dragging) {
-      this.gizmoTarget.position.set(0, 0, 0);
-      this.gizmoTarget.rotation.set(0, 0, 0);
-      this.gizmoTarget.rotation[axis] = THREE.MathUtils.degToRad(angleDeg);
+  // 単位サイズで作っておき、表示時に形状に合わせてスケールする
+  private buildRotateDial() {
+    this.rotateDial.visible = false;
+    // 全周リング
+    this.rotateDial.add(
+      new THREE.Mesh(new THREE.TorusGeometry(1, 0.012, 8, 96), this.dialRingMaterial),
+    );
+    // 30°ごとの目盛り (0°は長め)
+    const tickPoints: THREE.Vector3[] = [];
+    for (let deg = 0; deg < 360; deg += 30) {
+      const rad = THREE.MathUtils.degToRad(deg);
+      const inner = deg === 0 ? 0.8 : 0.92;
+      tickPoints.push(
+        new THREE.Vector3(Math.cos(rad) * inner, Math.sin(rad) * inner, 0),
+        new THREE.Vector3(Math.cos(rad), Math.sin(rad), 0),
+      );
     }
-    if (!this.gizmo.object) this.gizmo.attach(this.gizmoTarget);
+    this.rotateDial.add(
+      new THREE.LineSegments(
+        new THREE.BufferGeometry().setFromPoints(tickPoints),
+        new THREE.LineBasicMaterial({ color: 0x90a4ae }),
+      ),
+    );
+    // 現在角度の針とつまみ
+    this.dialHandle.add(
+      new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(0, 0, 0),
+          new THREE.Vector3(1, 0, 0),
+        ]),
+        this.dialNeedleMaterial,
+      ),
+    );
+    const knob = new THREE.Mesh(new THREE.SphereGeometry(0.06, 16, 12), this.dialRingMaterial);
+    knob.position.set(1, 0, 0);
+    this.dialHandle.add(knob);
+    this.rotateDial.add(this.dialHandle);
+    // 当たり判定用の見えない円盤
+    this.dialHitDisc = new THREE.Mesh(
+      new THREE.CircleGeometry(1.2, 48),
+      new THREE.MeshBasicMaterial({
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      }),
+    );
+    this.rotateDial.add(this.dialHitDisc);
+  }
+
+  private setDialAngle(angleDeg: number) {
+    this.dialHandle.rotation.z = THREE.MathUtils.degToRad(angleDeg);
+    this.dialLabel.textContent = `回転 ${this.dialAxis.toUpperCase()}: ${Math.round(angleDeg)}°`;
+  }
+
+  private rayFromPointer(event: PointerEvent) {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE.Vector2(
+      ((event.clientX - rect.left) / rect.width) * 2 - 1,
+      -((event.clientY - rect.top) / rect.height) * 2 + 1,
+    );
+    this.raycaster.setFromCamera(ndc, this.camera);
+  }
+
+  private isPointerOnDial(event: PointerEvent): boolean {
+    this.rayFromPointer(event);
+    return this.raycaster.intersectObject(this.dialHitDisc, false).length > 0;
+  }
+
+  // ポインタ位置をダイヤル平面に投影して角度にする (ノブのように追従)
+  private applyDialPointer(event: PointerEvent) {
+    this.rayFromPointer(event);
+    const basis = Viewer.DIAL_BASES[this.dialAxis];
+    const normal = new THREE.Vector3(...basis.n);
+    const point = new THREE.Vector3();
+    if (!this.raycaster.ray.intersectPlane(new THREE.Plane(normal, 0), point)) {
+      return;
+    }
+    const angle = THREE.MathUtils.radToDeg(
+      Math.atan2(
+        point.dot(new THREE.Vector3(...basis.v)),
+        point.dot(new THREE.Vector3(...basis.u)),
+      ),
+    );
+    this.setDialAngle(angle);
+    this.onGizmoRotate?.(angle);
+  }
+
+  // 回転ブロックは原点まわりの回転なので、ダイヤルは常に原点に置く
+  showRotateGizmo(axis: "x" | "y" | "z", angleDeg: number) {
+    if (this.gizmo.object) this.gizmo.detach(); // 移動ギズモは消す
+    this.dialAxis = axis;
+    const basis = Viewer.DIAL_BASES[axis];
+    this.rotateDial.quaternion.setFromRotationMatrix(
+      new THREE.Matrix4().makeBasis(
+        new THREE.Vector3(...basis.u),
+        new THREE.Vector3(...basis.v),
+        new THREE.Vector3(...basis.n),
+      ),
+    );
+    this.dialRingMaterial.color.set(basis.color);
+    this.dialNeedleMaterial.color.set(basis.color);
+    if (!this.dialDragging) {
+      // 形状より少し大きい半径にする
+      const box = new THREE.Box3().setFromObject(this.shapeGroup);
+      let radius = 20;
+      if (!box.isEmpty()) {
+        const sphere = box.getBoundingSphere(new THREE.Sphere());
+        radius = Math.min(Math.max(sphere.radius * 1.2 + 2, 8), 300);
+      }
+      this.rotateDial.scale.setScalar(radius);
+    }
+    this.setDialAngle(angleDeg);
+    this.rotateDial.visible = true;
+    this.dialLabel.style.display = "block";
   }
 
   hideGizmo() {
     if (this.gizmo.object) this.gizmo.detach();
+    this.rotateDial.visible = false;
+    this.dialLabel.style.display = "none";
   }
 
   updateShapes(meshes: unknown[]) {

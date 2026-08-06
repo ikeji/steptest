@@ -277,6 +277,19 @@ const angle = await page.evaluate(() => {
 });
 console.log("after rotate drag angle:", angle);
 
+// --- 回転ダイヤルを実際にドラッグして角度が変わる ---
+await page.mouse.move(1100, 380);
+await page.mouse.down();
+await page.mouse.move(990, 560, { steps: 4 });
+await page.mouse.up();
+await page.waitForTimeout(400);
+const dialAngle = await page.evaluate(() => {
+  const ws = window.blockcadWorkspace;
+  const block = ws.getAllBlocks().find((b) => b.type === "cad_rotate");
+  return block.getInputTargetBlock("ANGLE").getFieldValue("NUM");
+});
+console.log("after dial drag angle:", dialAngle, "changed:", dialAngle !== "45");
+
 // --- コンテキストアクションメニュー ---
 await page.mouse.click(400, 700); // 選択解除
 await page.waitForFunction(
