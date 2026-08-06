@@ -267,7 +267,7 @@ export const toolbox = {
       colour: `${TRANSFORM_COLOR}`,
       contents: [
         shadowedBlock("cad_translate", { X: 0, Y: 0, Z: 0 }),
-        shadowedBlock("cad_rotate", { ANGLE: 90 }),
+        shadowedBlock("cad_rotate", { ANGLE: 0 }),
         shadowedBlock("cad_scale", { FACTOR: 2 }),
       ],
     },

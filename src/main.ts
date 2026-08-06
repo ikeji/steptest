@@ -372,7 +372,7 @@ const WRAP_ACTIONS = [
     state: {
       type: "cad_rotate",
       fields: { AXIS: "[1, 0, 0]" },
-      inputs: { ANGLE: numShadow(90) },
+      inputs: { ANGLE: numShadow(0) },
     },
   },
   {
@@ -380,7 +380,7 @@ const WRAP_ACTIONS = [
     state: {
       type: "cad_rotate",
       fields: { AXIS: "[0, 1, 0]" },
-      inputs: { ANGLE: numShadow(90) },
+      inputs: { ANGLE: numShadow(0) },
     },
   },
   {
@@ -388,7 +388,7 @@ const WRAP_ACTIONS = [
     state: {
       type: "cad_rotate",
       fields: { AXIS: "[0, 0, 1]" },
-      inputs: { ANGLE: numShadow(90) },
+      inputs: { ANGLE: numShadow(0) },
     },
   },
   {
