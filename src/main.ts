@@ -567,7 +567,8 @@ function updateActionMenu() {
     actionHint.textContent = "Shift+クリックで2つ選ぶと合体などができます";
   } else {
     actionMenuTitle.textContent = "形状を追加";
-    actionHint.textContent = "";
+    actionHint.textContent =
+      "クリックで選択 / Shift+クリックで2つ選ぶと合体などができます";
   }
 }
 
