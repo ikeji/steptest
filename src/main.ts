@@ -88,6 +88,25 @@ const viewer = new Viewer(viewerArea);
 // OrbitControls / TransformControls はリスナーで動くため影響しない。
 viewerArea.addEventListener("pointerdown", (event) => event.preventDefault());
 
+// 3Dビュー内のクリック: 形状ならそのブロックを選択、空きなら選択解除
+viewer.onPickShape = (blockId) => {
+  if (blockId) {
+    const block = workspace.getBlockById(blockId) as Blockly.BlockSvg | null;
+    if (block) {
+      selectBlock(block);
+      return;
+    }
+  }
+  if (previewBlockId) {
+    const selected = workspace.getBlockById(
+      previewBlockId,
+    ) as Blockly.BlockSvg | null;
+    selected?.unselect();
+    previewBlockId = null;
+    scheduleRebuild(100);
+  }
+};
+
 // ---- Blockly --------------------------------------------------------------
 
 const workspace = Blockly.inject("blockly-area", {
@@ -148,6 +167,10 @@ worker.onmessage = (event) => {
   }
   if (msg.type === "result") {
     if (msg.id !== latestRunId) return; // 古い結果は捨てる
+    if (latestRunIsPreview) {
+      // プレビューのコードにはIDが入っていないので、対象ブロックのIDを付ける
+      for (const mesh of msg.meshes) mesh.blockId ??= latestRunPreviewId;
+    }
     viewer.updateShapes(msg.meshes);
     const time = formatElapsed(msg.elapsedMs);
     if (latestRunIsPreview) {
@@ -318,8 +341,28 @@ const WRAP_ACTIONS = [
     },
   },
   {
-    label: "回転",
-    state: { type: "cad_rotate", inputs: { ANGLE: numShadow(90) } },
+    label: "回転X",
+    state: {
+      type: "cad_rotate",
+      fields: { AXIS: "[1, 0, 0]" },
+      inputs: { ANGLE: numShadow(90) },
+    },
+  },
+  {
+    label: "回転Y",
+    state: {
+      type: "cad_rotate",
+      fields: { AXIS: "[0, 1, 0]" },
+      inputs: { ANGLE: numShadow(90) },
+    },
+  },
+  {
+    label: "回転Z",
+    state: {
+      type: "cad_rotate",
+      fields: { AXIS: "[0, 0, 1]" },
+      inputs: { ANGLE: numShadow(90) },
+    },
   },
   {
     label: "拡大縮小",
@@ -424,10 +467,12 @@ const codePanel = document.getElementById("code-panel")!;
 const codeView = document.getElementById("code-view")!;
 
 // replicadのワークベンチにそのまま貼れる形式で表示する
+// (クリック選択用の shapeIds 記録行は取り除く)
 function asReplicadScript(code: string): string {
   const body = code
     .trimEnd()
     .split("\n")
+    .filter((line) => !line.trim().startsWith("shapeIds["))
     .map((line) => (line ? `  ${line}` : line))
     .join("\n");
   return `const main = (replicad) => {\n  const shapes = [];\n${body}\n  return shapes;\n};`;
@@ -457,6 +502,7 @@ document.getElementById("code-head")!.addEventListener("pointerdown", (event) =>
 });
 
 let latestRunIsPreview = false;
+let latestRunPreviewId: string | null = null;
 
 function rebuild() {
   updateActionMenu();
@@ -464,6 +510,7 @@ function rebuild() {
   updateGizmo();
   const previewCode = generatePreviewCode();
   latestRunIsPreview = previewCode !== null;
+  latestRunPreviewId = previewCode ? (findPreviewTarget()?.id ?? null) : null;
   latestRunId = ++requestId;
   setStatus("計算中…");
   const code = previewCode ?? generateCode();

@@ -320,6 +320,29 @@ console.log(
 );
 await page.waitForTimeout(500);
 await page.screenshot({ path: "screen-actionmenu.png" });
+
+// --- 3Dビュー内クリック: 空きで選択解除、形状で選択 ---
+await page.mouse.click(1380, 860); // 何もない場所
+await page.waitForFunction(
+  () => document.getElementById("status")?.textContent?.includes("個の形状"),
+  { timeout: 15000 },
+);
+console.log(
+  "viewer empty click deselects:",
+  await page.evaluate(() => document.querySelector(".blocklySelected") == null),
+);
+await page.mouse.click(1050, 380); // 円柱のあたり
+await page.waitForFunction(
+  () => document.getElementById("status")?.textContent?.includes("プレビュー中"),
+  { timeout: 15000 },
+);
+console.log(
+  "viewer shape click selects:",
+  await page.evaluate(() => {
+    const id = document.querySelector(".blocklySelected")?.getAttribute("data-id");
+    return id ? window.blockcadWorkspace.getBlockById(id)?.type : null;
+  }),
+);
 await page.screenshot({ path: new URL("./screen.png", import.meta.url).pathname });
 console.log("console errors:", errors.length ? errors : "none");
 await browser.close();

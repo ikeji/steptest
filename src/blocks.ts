@@ -237,7 +237,13 @@ g.forBlock["cad_chamfer"] = (block) => {
 g.forBlock["cad_show"] = (block) => {
   const s = shape(block, "SHAPE");
   if (!s) return "";
-  return `shapes.push(${s});\n`;
+  // 3Dビューでのクリック選択用に、形状を作ったブロックのIDも記録する
+  // (コード表示パネルでは shapeIds の行は取り除かれる)
+  const id = block.getInputTargetBlock("SHAPE")?.id ?? "";
+  return (
+    `shapes.push(${s});\n` +
+    `shapeIds[shapes.length - 1] = ${JSON.stringify(id)};\n`
+  );
 };
 
 // ---- ツールボックス --------------------------------------------------------

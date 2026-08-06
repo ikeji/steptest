@@ -18,6 +18,9 @@ export class Viewer {
   onGizmoMove?: (pos: { x: number; y: number; z: number }) => void;
   /** 回転ギズモをドラッグして角度が変わったときに呼ばれる (度) */
   onGizmoRotate?: (angleDeg: number) => void;
+  /** 形状をクリックしたとき (blockId)、空きをクリックしたとき (null) に呼ばれる */
+  onPickShape?: (blockId: string | null) => void;
+  private raycaster = new THREE.Raycaster();
   private geometries: { faces: THREE.BufferGeometry; lines: THREE.BufferGeometry }[] = [];
 
   private faceMaterial = new THREE.MeshStandardMaterial({
@@ -75,6 +78,33 @@ export class Viewer {
     });
     this.scene.add(this.gizmo.getHelper());
 
+    // クリック (ドラッグやギズモ操作でない) で形状を選択できるようにする
+    const dom = this.renderer.domElement;
+    let downAt: { x: number; y: number } | null = null;
+    dom.addEventListener("pointerdown", (event) => {
+      // ギズモのハンドル上 (ホバーで axis が立つ) なら選択処理はしない
+      downAt = this.gizmo.axis ? null : { x: event.clientX, y: event.clientY };
+    });
+    dom.addEventListener("pointerup", (event) => {
+      if (!downAt) return;
+      const moved = Math.hypot(event.clientX - downAt.x, event.clientY - downAt.y);
+      downAt = null;
+      if (moved > 5) return; // カメラ操作のドラッグ
+      const rect = dom.getBoundingClientRect();
+      const ndc = new THREE.Vector2(
+        ((event.clientX - rect.left) / rect.width) * 2 - 1,
+        -((event.clientY - rect.top) / rect.height) * 2 + 1,
+      );
+      this.raycaster.setFromCamera(ndc, this.camera);
+      const meshes = this.shapeGroup.children.filter(
+        (c): c is THREE.Mesh => c instanceof THREE.Mesh,
+      );
+      const hit = this.raycaster.intersectObjects(meshes, false)[0];
+      this.onPickShape?.(
+        hit ? ((hit.object.userData.blockId as string | null) ?? null) : null,
+      );
+    });
+
     const resize = () => {
       const { clientWidth, clientHeight } = container;
       this.camera.aspect = clientWidth / Math.max(clientHeight, 1);
@@ -130,12 +160,17 @@ export class Viewer {
   }
 
   updateShapes(meshes: unknown[]) {
+    const blockIds = (meshes as { blockId?: string | null }[]).map(
+      (m) => m.blockId ?? null,
+    );
     this.geometries = syncGeometries(meshes as never, this.geometries as never);
 
     this.shapeGroup.clear();
-    for (const { faces, lines } of this.geometries) {
-      this.shapeGroup.add(new THREE.Mesh(faces, this.faceMaterial));
+    this.geometries.forEach(({ faces, lines }, i) => {
+      const mesh = new THREE.Mesh(faces, this.faceMaterial);
+      mesh.userData.blockId = blockIds[i];
+      this.shapeGroup.add(mesh);
       this.shapeGroup.add(new THREE.LineSegments(lines, this.lineMaterial));
-    }
+    });
   }
 }
