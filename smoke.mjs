@@ -398,6 +398,68 @@ console.log(
     });
   }),
 );
+// --- 関数による抽象化: 選択形状を「関数にまとめる」で定義+呼び出しに分離 ---
+await page.locator("#action-wrap button", { hasText: "関数にまとめる" }).click();
+await page.waitForFunction(
+  () =>
+    window.blockcadWorkspace
+      .getAllBlocks()
+      .some((b) => b.type === "procedures_defreturn"),
+  { timeout: 15000 },
+);
+await page.waitForTimeout(800); // 再計算を待つ
+console.log(
+  "after extract function:",
+  await page.evaluate(() => {
+    const ws = window.blockcadWorkspace;
+    const def = ws.getAllBlocks().find((b) => b.type === "procedures_defreturn");
+    const call = ws.getAllBlocks().find((b) => b.type === "procedures_callreturn");
+    return JSON.stringify({
+      name: def?.getFieldValue("NAME"),
+      returns: def?.getInputTargetBlock("RETURN")?.type,
+      callParent: call?.getParent()?.type,
+      status: document.getElementById("status")?.textContent,
+    });
+  }),
+);
+
+// 関数定義の中のブロックを選択してもプレビューにならず全体表示のまま
+await page.evaluate(() => {
+  const ws = window.blockcadWorkspace;
+  const block = ws.getAllBlocks().find((b) => b.type === "cad_cylinder");
+  ws.centerOnBlock(block.id);
+});
+await page.locator(".blocklyText", { hasText: "円柱" }).first().click();
+await page.waitForFunction(
+  () => document.getElementById("status")?.textContent?.includes("個の形状"),
+  { timeout: 15000 },
+);
+console.log("select inside def keeps full view:", await page.textContent("#status"));
+
+// --- 未選択メニューに定義済み関数の追加ボタンが出て、呼び出しを追加できる ---
+await page.mouse.click(1380, 860); // 選択解除
+await page.waitForFunction(
+  () => document.querySelector(".blocklySelected") == null,
+  { timeout: 15000 },
+);
+const fnButton = page.locator("#action-add button.fn-call");
+console.log("function add button:", await fnButton.textContent());
+await fnButton.click();
+await page.waitForFunction(
+  () =>
+    window.blockcadWorkspace
+      .getAllBlocks()
+      .filter((b) => b.type === "procedures_callreturn").length === 2,
+  { timeout: 15000 },
+);
+await page.mouse.click(1380, 860); // 選択解除して全体表示に戻す
+await page.waitForFunction(
+  () => document.getElementById("status")?.textContent?.includes("2個の形状"),
+  { timeout: 15000 },
+);
+console.log("after add function call:", await page.textContent("#status"));
+await page.screenshot({ path: "screen-function.png" });
+
 await page.screenshot({ path: new URL("./screen.png", import.meta.url).pathname });
 console.log("console errors:", errors.length ? errors : "none");
 await browser.close();

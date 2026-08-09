@@ -320,6 +320,12 @@ export const toolbox = {
       custom: "VARIABLE",
       colour: "330",
     },
+    {
+      kind: "category",
+      name: "関数",
+      custom: "PROCEDURE",
+      colour: "290",
+    },
   ],
 };
 

@@ -245,9 +245,14 @@ function findPreviewTarget(): Blockly.Block | null {
       target = target.getInputTargetBlock("SHAPE");
       break;
     }
+    // 関数呼び出しの出力には型チェックがないので、型ではなく種類で判定する
+    if (target.type === "procedures_callreturn") break;
     if (target.outputConnection?.getCheck()?.includes("Shape")) break;
     target = target.getParent();
   }
+  // 関数定義の中のブロックは引数の値が決まらないのでプレビューできない。
+  // 全体表示のままにしておく。
+  if (target?.getRootBlock().type.startsWith("procedures_def")) return null;
   return target;
 }
 
@@ -256,6 +261,11 @@ function generatePreviewCode(): string | null {
   if (!target) return null;
   const g = javascriptGenerator;
   g.init(workspace);
+  // プレビュー対象が関数呼び出しを含んでいても動くように、関数定義を先に
+  // 生成しておく (定義は finish() が先頭にまとめて出力する)
+  for (const top of workspace.getTopBlocks(false)) {
+    if (top.type.startsWith("procedures_def")) g.blockToCode(top);
+  }
   const result = g.blockToCode(target);
   const expr = Array.isArray(result) ? result[0] : String(result);
   if (!expr) return null;
@@ -464,6 +474,41 @@ function wrapSelected(state: BlockState) {
   }
 }
 
+// 選択中の形状ブロックを関数定義に切り出し、元の場所を呼び出しに置き換える。
+// 同じ形状を何度も使い回すための抽象化。
+function extractFunction() {
+  const target = findPreviewTarget() as Blockly.BlockSvg | null;
+  if (!target?.outputConnection) return;
+  Blockly.Events.setGroup(true);
+  try {
+    const parentConnection = target.outputConnection.targetConnection;
+    const pos = target.getRelativeToSurfaceXY();
+    let y = 30;
+    for (const top of workspace.getTopBlocks(false)) {
+      y = Math.max(y, top.getBoundingRectangle().bottom + 40);
+    }
+    const def = appendBlock({ type: "procedures_defreturn" });
+    const name = Blockly.Procedures.findLegalName("かたち", def);
+    def.setFieldValue(name, "NAME");
+    def.getInput("RETURN")!.connection!.connect(target.outputConnection);
+    const rect = def.getBoundingRectangle();
+    def.moveBy(30 - rect.left, y - rect.top);
+    const call = appendBlock({
+      type: "procedures_callreturn",
+      extraState: { name },
+    });
+    if (parentConnection) {
+      parentConnection.connect(call.outputConnection!);
+    } else {
+      const cur = call.getRelativeToSurfaceXY();
+      call.moveBy(pos.x - cur.x, pos.y - cur.y);
+    }
+    selectBlock(call);
+  } finally {
+    Blockly.Events.setGroup(false);
+  }
+}
+
 // ---- 複数選択 (Shift+クリック) と組み合わせ --------------------------------
 
 let multiSelection: string[] = [];
@@ -543,6 +588,28 @@ for (const action of WRAP_ACTIONS) {
   button.addEventListener("click", () => wrapSelected(action.state));
   actionWrap.appendChild(button);
 }
+{
+  const button = document.createElement("button");
+  button.textContent = "関数にまとめる";
+  button.addEventListener("click", extractFunction);
+  actionWrap.appendChild(button);
+}
+
+// 定義済みの関数を「形状を追加」の選択肢として出す (呼び出し+表示を追加)
+function updateAddFunctionButtons() {
+  actionAdd.querySelectorAll(".fn-call").forEach((el) => el.remove());
+  for (const def of workspace.getBlocksByType("procedures_defreturn", true)) {
+    const name = def.getFieldValue("NAME");
+    if (!name) continue;
+    const button = document.createElement("button");
+    button.classList.add("fn-call");
+    button.textContent = `関数「${name}」`;
+    button.addEventListener("click", () =>
+      addShape({ type: "procedures_callreturn", extraState: { name } }),
+    );
+    actionAdd.appendChild(button);
+  }
+}
 
 function updateActionMenu() {
   // 消えたブロックのIDが残っていたら掃除する
@@ -551,6 +618,7 @@ function updateActionMenu() {
     multiSelection = liveMulti;
     viewer.setHighlights(liveMulti);
   }
+  updateAddFunctionButtons();
   const hasTarget = findPreviewTarget() != null;
   const multi = multiSelection.length;
   actionAdd.hidden = multi > 0 || hasTarget;
