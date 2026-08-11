@@ -1,4 +1,7 @@
-node_modules/
-dist/
+# 実体は ~/.cache/blockcad-steptest/ に置き、シンボリックリンクで参照している
+# (バックアップ対象の ~/work 以下に重い生成物を置かないため)。
+# スラッシュなしのパターンにしてシンボリックリンク自体も無視する。
+node_modules
+dist
 *.local
 screen*.png

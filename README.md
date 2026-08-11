@@ -33,6 +33,8 @@ npm run typecheck  # tsc --noEmit
 node smoke.mjs     # ヘッドレスブラウザでの動作確認 (dev サーバーをポート5199で起動しておく)
 ```
 
+この開発機では `~/work` 以下が定期バックアップされるため、`node_modules` と `dist` の実体は `~/.cache/blockcad-steptest/` に置いてシンボリックリンクで参照している。`npm install` はリンクの `node_modules` を実体ディレクトリに置き換えてしまうので、install したら `npm run relink-deps` で戻すこと。
+
 ## GitHub Pages へのデプロイ
 
 ビルド成果物は `gh-pages` ブランチに入れる (`vite.config.ts` の `base: "./"` でサブパス配信に対応済み)。
